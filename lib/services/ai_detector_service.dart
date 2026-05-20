@@ -1,23 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:google_generative_ai/google_generative_ai.dart';
-
 import '../models/detection_result.dart';
 
 class AiDetectorService {
+  /// Detects whether an image contains an ID‑card‑type document.
   static Future<DetectionResult> detectIdCard({
     required File imageFile,
     required String apiKey,
   }) async {
-    final modelsToTry = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro',
-    ];
-
-    Object? lastError;
+    // **Use a supported Gemini model ID** – adjust as needed.
+    const modelName = 'gemini-3.1-flash-lite';
 
     final imageBytes = await imageFile.readAsBytes();
     final mimeType = _getMimeType(imageFile.path);
@@ -31,7 +24,7 @@ Official identification documents include:
 - Driver's Licenses
 - State IDs
 - Resident Cards
-- Similar government-issued photo identification
+- Similar government‑issued photo IDs
 
 Return ONLY valid JSON with this structure:
 
@@ -48,21 +41,16 @@ Return ONLY valid JSON with this structure:
   },
   "reasoning": ""
 }
-
-Rules:
-- Do not use markdown
-- Do not wrap JSON in ``` blocks
-- Return raw JSON only
-- If no ID is detected:
-  - set is_id_card to false
-  - document_type to "Not an ID Card"
-  - extracted_details to {}
+If no ID is detected, set `is_id_card` to false and `extracted_details` to {}.
 ''';
 
-    for (final modelName in modelsToTry) {
-      try {
-        print('Trying model: $modelName');
+    const maxAttempts = 4;
+    var attempt = 0;
+    var backoff = const Duration(seconds: 2);
+    Object? lastError;
 
+    while (attempt < maxAttempts) {
+      try {
         final model = GenerativeModel(
           model: modelName,
           apiKey: apiKey.trim(),
@@ -76,66 +64,48 @@ Rules:
           Content.multi([
             TextPart(prompt),
             DataPart(mimeType, imageBytes),
-          ]),
+          ])
         ]);
 
-        final responseText = response.text;
-
-        print('Response from $modelName: $responseText');
-
-        if (responseText == null || responseText.trim().isEmpty) {
-          throw Exception('Empty response from Gemini.');
+        final raw = response.text?.trim();
+        if (raw == null || raw.isEmpty) {
+          throw Exception('Empty response from model.');
         }
 
-        final cleanedResponse = responseText
+        // Clean any stray markdown fences that may appear.
+        final cleaned = raw
             .replaceAll('```json', '')
             .replaceAll('```', '')
             .trim();
 
-        final decoded = jsonDecode(cleanedResponse);
-
+        final decoded = jsonDecode(cleaned);
         return DetectionResult.fromJson(decoded);
       } catch (e) {
         lastError = e;
-
-        print(
-          'Model $modelName failed with error: $e',
-        );
-        // If the error is likely temporary (e.g., server overloaded or quota limit), wait a moment before trying the next model.
-        final errorMsg = e.toString().toLowerCase();
-        if (errorMsg.contains('unavailable') ||
-            errorMsg.contains('quota') ||
-            errorMsg.contains('rate limit')) {
-          await Future.delayed(const Duration(seconds: 2));
+        final msg = e.toString().toLowerCase();
+        if (msg.contains('unavailable') ||
+            msg.contains('quota') ||
+            msg.contains('rate limit') ||
+            msg.contains('network')) {
+          await Future.delayed(backoff);
+          backoff *= 2;
+          attempt++;
+          continue;
         }
+        rethrow;
       }
     }
 
     throw Exception(
-      'All Gemini models failed. Last error: $lastError',
-    );
+        'Model calls failed after $maxAttempts attempts. Last error: $lastError');
   }
 
   static String _getMimeType(String filePath) {
-    final lowerPath = filePath.toLowerCase();
-
-    if (lowerPath.endsWith('.png')) {
-      return 'image/png';
-    }
-
-    if (lowerPath.endsWith('.jpg') ||
-        lowerPath.endsWith('.jpeg')) {
-      return 'image/jpeg';
-    }
-
-    if (lowerPath.endsWith('.webp')) {
-      return 'image/webp';
-    }
-
-    if (lowerPath.endsWith('.gif')) {
-      return 'image/gif';
-    }
-
+    final lower = filePath.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
     return 'image/jpeg';
   }
 }
