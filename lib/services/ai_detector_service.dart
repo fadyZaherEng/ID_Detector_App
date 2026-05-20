@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:google_generative_ai/google_generative_ai.dart';
+
 import '../models/detection_result.dart';
 
 class AiDetectorService {
@@ -10,80 +12,123 @@ class AiDetectorService {
   }) async {
     final modelsToTry = [
       'gemini-2.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
     ];
 
     Object? lastError;
 
+    final imageBytes = await imageFile.readAsBytes();
+    final mimeType = _getMimeType(imageFile.path);
+
+    const prompt = '''
+Analyze the provided image and determine if it is an official identification document.
+
+Official identification documents include:
+- National ID Cards
+- Passports
+- Driver's Licenses
+- State IDs
+- Resident Cards
+- Similar government-issued photo identification
+
+Return ONLY valid JSON with this structure:
+
+{
+  "is_id_card": true,
+  "confidence": 0.98,
+  "document_type": "National ID",
+  "extracted_details": {
+    "full_name": "",
+    "id_number": "",
+    "expiry_date": "",
+    "issuing_country": "",
+    "date_of_birth": ""
+  },
+  "reasoning": ""
+}
+
+Rules:
+- Do not use markdown
+- Do not wrap JSON in ``` blocks
+- Return raw JSON only
+- If no ID is detected:
+  - set is_id_card to false
+  - document_type to "Not an ID Card"
+  - extracted_details to {}
+''';
+
     for (final modelName in modelsToTry) {
       try {
+        print('Trying model: $modelName');
+
         final model = GenerativeModel(
           model: modelName,
-          apiKey: apiKey,
+          apiKey: apiKey.trim(),
           generationConfig: GenerationConfig(
+            temperature: 0,
             responseMimeType: 'application/json',
           ),
         );
-
-        final imageBytes = await imageFile.readAsBytes();
-        final mimeType = _getMimeType(imageFile.path);
-
-        const prompt = '''
-        Analyze the provided image and determine if it is an official identification document. 
-        Official identification documents include: National ID Cards, Passports, Driver's Licenses, State IDs, Resident Cards, or similar government-issued photo identification.
-        
-        Return a JSON object with the following fields:
-        - is_id_card: a boolean indicating if the image is an identification document.
-        - confidence: a double between 0.0 and 1.0 representing your confidence in this decision.
-        - document_type: a string specifying the type of document (e.g., "National ID", "Driver's License", "Passport", "Resident Card", "Not an ID Card", "Unknown").
-        - extracted_details: a JSON object containing key-value pairs of any details you can read from the document, such as:
-          - full_name
-          - id_number
-          - expiry_date
-          - issuing_country
-          - date_of_birth
-          - any other relevant fields visible (use lowercase snake_case for keys, and string values). If not an ID or no details can be read, leave this object empty.
-        - reasoning: a string explaining the reason for your classification (e.g., "Contains a clear face photograph, government markings, and typical ID card metadata fields" or "This is a photo of a dog and contains no identification card properties").
-
-        Do not include any formatting other than the raw JSON output.
-        ''';
 
         final response = await model.generateContent([
           Content.multi([
             TextPart(prompt),
             DataPart(mimeType, imageBytes),
-          ])
+          ]),
         ]);
 
         final responseText = response.text;
-        if (responseText == null) {
-          throw Exception('Received empty response from Gemini AI.');
+
+        print('Response from $modelName: $responseText');
+
+        if (responseText == null || responseText.trim().isEmpty) {
+          throw Exception('Empty response from Gemini.');
         }
 
-        final decoded = jsonDecode(responseText);
+        final cleanedResponse = responseText
+            .replaceAll('```json', '')
+            .replaceAll('```', '')
+            .trim();
+
+        final decoded = jsonDecode(cleanedResponse);
+
         return DetectionResult.fromJson(decoded);
       } catch (e) {
         lastError = e;
-        // Print warning to log and try next model
-        print('Model $modelName failed with error: $e. Trying fallback model...');
+
+        print(
+          'Model $modelName failed with error: $e',
+        );
       }
     }
 
-    throw Exception('All Gemini models failed. Last error: $lastError');
+    throw Exception(
+      'All Gemini models failed. Last error: $lastError',
+    );
   }
 
   static String _getMimeType(String filePath) {
     final lowerPath = filePath.toLowerCase();
+
     if (lowerPath.endsWith('.png')) {
       return 'image/png';
-    } else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
+    }
+
+    if (lowerPath.endsWith('.jpg') ||
+        lowerPath.endsWith('.jpeg')) {
       return 'image/jpeg';
-    } else if (lowerPath.endsWith('.webp')) {
+    }
+
+    if (lowerPath.endsWith('.webp')) {
       return 'image/webp';
-    } else if (lowerPath.endsWith('.gif')) {
+    }
+
+    if (lowerPath.endsWith('.gif')) {
       return 'image/gif';
     }
-    return 'image/jpeg'; // default fallback
+
+    return 'image/jpeg';
   }
 }
