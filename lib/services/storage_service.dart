@@ -4,6 +4,7 @@ class StorageService {
   //get it from this https://aistudio.google.com/api-keys?project=gen-lang-client-0389621963
   static const String _apiKeyKey = 'gemini_api_key';//AIzaSyCdbecd3YypiLjsfhYezjKbiGf6SBjxRCU
   static const String _demoModeKey = 'demo_mode_enabled';
+  static const String _localOcrKey = 'local_ocr_enabled';
 
   static Future<String?> getApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -28,5 +29,15 @@ class StorageService {
   static Future<bool> setDemoModeEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.setBool(_demoModeKey, enabled);
+  }
+
+  static Future<bool> isLocalOcrEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_localOcrKey) ?? false; // Default to false (Gemini is primary)
+  }
+
+  static Future<bool> setLocalOcrEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setBool(_localOcrKey, enabled);
   }
 }

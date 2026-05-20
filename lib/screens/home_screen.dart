@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen>
   DetectionResult? _result;
   String _apiKey = '';
   bool _isDemoMode = false;
+  bool _useLocalOcr = false;
   String? _errorMessage;
 
   late AnimationController _scannerController;
@@ -54,16 +55,19 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _loadSettings() async {
     final savedKey = await StorageService.getApiKey();
     final demoMode = await StorageService.isDemoModeEnabled();
+    final localOcr = await StorageService.isLocalOcrEnabled();
     setState(() {
       _apiKey = savedKey ?? '';
       _apiKeyController.text = _apiKey;
       _isDemoMode = demoMode;
+      _useLocalOcr = localOcr;
     });
   }
 
   Future<void> _saveSettings() async {
     await StorageService.saveApiKey(_apiKeyController.text);
     await StorageService.setDemoModeEnabled(_isDemoMode);
+    await StorageService.setLocalOcrEnabled(_useLocalOcr);
     setState(() {
       _apiKey = _apiKeyController.text;
     });
@@ -131,6 +135,13 @@ class _HomeScreenState extends State<HomeScreen>
         
         setState(() {
           _result = isLikelyId ? DetectionResult.mockId() : DetectionResult.mockNotId();
+        });
+      } else if (_useLocalOcr) {
+        final result = await AiDetectorService.detectIdCardLocally(
+          imageFile: _imageFile!,
+        );
+        setState(() {
+          _result = result;
         });
       } else {
         if (_apiKey.trim().isEmpty) {
@@ -253,9 +264,67 @@ class _HomeScreenState extends State<HomeScreen>
                           onChanged: (val) {
                             setModalState(() {
                               _isDemoMode = val;
+                              if (val) _useLocalOcr = false; // Turn off local OCR when demo mode is enabled
                             });
                             setState(() {
                               _isDemoMode = val;
+                              if (val) _useLocalOcr = false;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Local OCR Switch
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Local ML Kit OCR (Free)',
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Verify ID using local, offline text recognition on device.',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _useLocalOcr,
+                          activeColor: Colors.cyanAccent,
+                          activeTrackColor: Colors.cyan.shade900,
+                          inactiveThumbColor: Colors.white54,
+                          inactiveTrackColor: Colors.white12,
+                          onChanged: (val) {
+                            setModalState(() {
+                              _useLocalOcr = val;
+                              if (val) _isDemoMode = false; // Turn off demo mode when local OCR is enabled
+                            });
+                            setState(() {
+                              _useLocalOcr = val;
+                              if (val) _isDemoMode = false;
                             });
                           },
                         ),
@@ -266,10 +335,10 @@ class _HomeScreenState extends State<HomeScreen>
 
                   // API Key Field (Conditional)
                   AnimatedOpacity(
-                    opacity: _isDemoMode ? 0.5 : 1.0,
+                    opacity: (_isDemoMode || _useLocalOcr) ? 0.5 : 1.0,
                     duration: const Duration(milliseconds: 300),
                     child: IgnorePointer(
-                      ignoring: _isDemoMode,
+                      ignoring: _isDemoMode || _useLocalOcr,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -449,13 +518,17 @@ class _HomeScreenState extends State<HomeScreen>
                                 width: 8,
                                 height: 8,
                                 decoration: BoxDecoration(
-                                  color: _isDemoMode ? Colors.amber : Colors.greenAccent,
+                                  color: _isDemoMode 
+                                      ? Colors.amber 
+                                      : (_useLocalOcr ? Colors.cyanAccent : Colors.greenAccent),
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
                                       color: _isDemoMode
                                           ? Colors.amber.withOpacity(0.5)
-                                          : Colors.greenAccent.withOpacity(0.5),
+                                          : (_useLocalOcr 
+                                              ? Colors.cyanAccent.withOpacity(0.5) 
+                                              : Colors.greenAccent.withOpacity(0.5)),
                                       blurRadius: 6,
                                       spreadRadius: 2,
                                     )
@@ -464,7 +537,9 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _isDemoMode ? 'Demo Mode (Simulation)' : 'Gemini AI Active',
+                                _isDemoMode 
+                                    ? 'Demo Mode (Simulation)' 
+                                    : (_useLocalOcr ? 'Local ML Kit OCR (Free)' : 'Gemini AI Active'),
                                 style: GoogleFonts.outfit(
                                   color: Colors.white60,
                                   fontSize: 13,

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../models/detection_result.dart';
 
 class AiDetectorService {
@@ -85,5 +86,93 @@ class AiDetectorService {
       return 'image/gif';
     }
     return 'image/jpeg'; // default fallback
+  }
+
+  static Future<DetectionResult> detectIdCardLocally({required File imageFile}) async {
+    final inputImage = InputImage.fromFilePath(imageFile.path);
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    
+    try {
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      final text = recognizedText.text;
+      final lowerText = text.toLowerCase();
+
+      bool isId = false;
+      String docType = 'Not an ID Card';
+      double confidence = 0.0;
+      final Map<String, String> details = {};
+      String reasoning = '';
+
+      // Detection indicators
+      final hasIdKeyword = lowerText.contains('national') || 
+                           lowerText.contains('identity') || 
+                           lowerText.contains('card') || 
+                           lowerText.contains('government') ||
+                           lowerText.contains('republic') ||
+                           lowerText.contains('egypt') ||
+                           lowerText.contains('مصر') ||
+                           lowerText.contains('القومي') ||
+                           lowerText.contains('بطاقة');
+                           
+      final hasPassportKeyword = lowerText.contains('passport') || 
+                                 lowerText.contains('جواز') || 
+                                 lowerText.contains('سفر');
+                                 
+      final hasLicenseKeyword = lowerText.contains('license') || 
+                                lowerText.contains('driving') || 
+                                lowerText.contains('driver') ||
+                                lowerText.contains('رخصة') ||
+                                lowerText.contains('قيادة');
+
+      if (hasPassportKeyword) {
+        isId = true;
+        docType = 'Passport';
+        confidence = 0.90;
+      } else if (hasLicenseKeyword) {
+        isId = true;
+        docType = "Driver's License";
+        confidence = 0.92;
+      } else if (hasIdKeyword) {
+        isId = true;
+        docType = 'National ID Card';
+        confidence = 0.88;
+      }
+
+      if (isId) {
+        reasoning = 'Local ML Kit OCR scanned the image and successfully identified key text structures indicating a $docType. This verification was processed 100% locally on the device.';
+        
+        // Extract 14-digit Egyptian ID if exists
+        final egyptIdRegex = RegExp(r'\b\d{14}\b');
+        final matchId = egyptIdRegex.firstMatch(text);
+        if (matchId != null) {
+          details['id_number'] = matchId.group(0)!;
+        }
+
+        // Extract potential date values (YYYY-MM-DD or DD/MM/YYYY)
+        final dateRegex = RegExp(r'\b\d{2}[-/.]\d{2}[-/.]\d{4}\b|\b\d{4}[-/.]\d{2}[-/.]\d{2}\b');
+        final dates = dateRegex.allMatches(text).map((m) => m.group(0)!).toList();
+        if (dates.isNotEmpty) {
+          details['dates_found'] = dates.join(', ');
+        }
+        
+        // Include first 100 characters of scanned text
+        final snippet = text.replaceAll('\n', ' ').trim();
+        details['scanned_text'] = snippet.length > 80 ? '${snippet.substring(0, 80)}...' : snippet;
+      } else {
+        reasoning = 'Local ML Kit OCR scanned the image but could not find any typical text indicators matching a National ID, Passport, or Driver\'s License. No government headers or standard ID patterns were detected.';
+      }
+
+      return DetectionResult(
+        isIdCard: isId,
+        confidence: confidence,
+        documentType: docType,
+        extractedDetails: details,
+        reasoning: reasoning,
+      );
+    } catch (e) {
+      throw Exception('Local OCR scanning failed: $e');
+    } finally {
+      textRecognizer.close();
+    }
   }
 }
