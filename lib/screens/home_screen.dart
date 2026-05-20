@@ -860,9 +860,9 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildResultsCard() {
     final result = _result!;
     final isSuccess = result.isIdCard;
-    final color = isSuccess ? Colors.greenAccent : Colors.orangeAccent;
-    final bgColor = isSuccess ? Colors.green.withOpacity(0.04) : Colors.orange.withOpacity(0.04);
-    final borderColor = isSuccess ? Colors.greenAccent.withOpacity(0.2) : Colors.orangeAccent.withOpacity(0.2);
+    final color = isSuccess ? Colors.greenAccent : Colors.redAccent;
+    final bgColor = isSuccess ? Colors.green.withOpacity(0.04) : Colors.red.withOpacity(0.04);
+    final borderColor = isSuccess ? Colors.greenAccent.withOpacity(0.2) : Colors.redAccent.withOpacity(0.2);
 
     return Container(
       margin: const EdgeInsets.only(top: 24),
@@ -875,6 +875,48 @@ class _HomeScreenState extends State<HomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!isSuccess) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.redAccent.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'الصورة غير صحيحة أو غير مدعومة',
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'يرجى التأكد من رفع بطاقة رقم قومي، جواز سفر، أو رخصة قيادة صالحة فقط.',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
           // Header Badge Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -890,7 +932,7 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        isSuccess ? 'ID DOCUMENT DETECTED' : 'NOT AN ID CARD',
+                        isSuccess ? 'ID DOCUMENT DETECTED' : 'INVALID PHOTO / صورة غير صحيحة',
                         style: GoogleFonts.outfit(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
