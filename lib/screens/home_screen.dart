@@ -879,25 +879,32 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    isSuccess ? Icons.verified_user : Icons.gpp_bad,
-                    color: color,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    isSuccess ? 'ID DOCUMENT DETECTED' : 'NOT AN ID CARD',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      isSuccess ? Icons.verified_user : Icons.gpp_bad,
                       color: color,
-                      letterSpacing: 0.5,
+                      size: 28,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        isSuccess ? 'ID DOCUMENT DETECTED' : 'NOT AN ID CARD',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                          letterSpacing: 0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -925,12 +932,15 @@ class _HomeScreenState extends State<HomeScreen>
                 'Document Classification: ',
                 style: GoogleFonts.outfit(color: Colors.white60, fontSize: 14),
               ),
-              Text(
-                result.documentType,
-                style: GoogleFonts.outfit(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
+              Expanded(
+                child: Text(
+                  result.documentType,
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
