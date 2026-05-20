@@ -147,8 +147,18 @@ class _HomeScreenState extends State<HomeScreen>
         });
       }
     } catch (e) {
+      final errorStr = e.toString().toLowerCase();
+
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+         if (errorStr.contains('quota') ||
+            errorStr.contains('rate limit') ||
+            errorStr.contains('limit exceeded') ||
+            errorStr.contains('requests')) {
+          _errorMessage =
+          'عذراً! لقد تجاوزت الحد الأقصى للطلبات المجانية في الدقيقة. يرجى الانتظار 30-40 ثانية ثم إعادة المحاولة.\n\n(Free quota rate limit reached. Please wait 30-40 seconds and try again.)';
+        } else {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        }
       });
     } finally {
       setState(() {
