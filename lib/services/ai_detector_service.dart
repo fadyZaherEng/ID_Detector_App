@@ -101,6 +101,13 @@ Rules:
         print(
           'Model $modelName failed with error: $e',
         );
+        // If the error is likely temporary (e.g., server overloaded or quota limit), wait a moment before trying the next model.
+        final errorMsg = e.toString().toLowerCase();
+        if (errorMsg.contains('unavailable') ||
+            errorMsg.contains('quota') ||
+            errorMsg.contains('rate limit')) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
     }
 
