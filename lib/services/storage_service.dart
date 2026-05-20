@@ -9,7 +9,7 @@ class StorageService {
 
   static Future<String?> getApiKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiKeyKey) ?? 'AIzaSyCdbecd3YypiLjsfhYezjKbiGf6SBjxRCU';
+    return prefs.getString(_apiKeyKey) ?? 'gemini_api_key';
   }
 
   static Future<bool> saveApiKey(String key) async {
