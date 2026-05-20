@@ -158,8 +158,17 @@ class _HomeScreenState extends State<HomeScreen>
         });
       }
     } catch (e) {
+      final errorStr = e.toString().toLowerCase();
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        if (errorStr.contains('quota') ||
+            errorStr.contains('rate limit') ||
+            errorStr.contains('limit exceeded') ||
+            errorStr.contains('requests')) {
+          _errorMessage =
+              'عذراً! لقد تجاوزت الحد الأقصى للطلبات المجانية في الدقيقة. يرجى الانتظار 30-40 ثانية ثم إعادة المحاولة.\n\n(Free quota rate limit reached. Please wait 30-40 seconds and try again.)';
+        } else {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        }
       });
     } finally {
       setState(() {
@@ -984,6 +993,18 @@ class _HomeScreenState extends State<HomeScreen>
                             height: 1.4,
                           ),
                         ),
+                        if (_useLocalOcr) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'تنبيه: محرك التعرف المحلي لا يدعم البطاقات باللغة العربية (مثل البطاقة المصرية). لقراءة بطاقتك بنجاح، يرجى تفعيل محرك Gemini AI من الإعدادات الترس في الأعلى ⚙️.',
+                            style: GoogleFonts.outfit(
+                              color: Colors.cyanAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

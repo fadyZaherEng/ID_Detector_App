@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../models/detection_result.dart';
@@ -11,90 +12,152 @@ class AiDetectorService {
   }) async {
     final modelsToTry = [
       'gemini-2.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
     ];
 
     Object? lastError;
 
+    final imageBytes = await imageFile.readAsBytes();
+    final mimeType = _getMimeType(imageFile.path);
+
+    const prompt = '''
+Analyze the provided image and determine if it is an official identification document.
+
+Official identification documents include:
+- National ID Cards
+- Passports
+- Driver's Licenses
+- State IDs
+- Resident Cards
+- Similar government-issued photo identification
+
+Return ONLY valid JSON with this structure:
+
+{
+  "is_id_card": true,
+  "confidence": 0.98,
+  "document_type": "National ID",
+  "extracted_details": {
+    "full_name": "",
+    "id_number": "",
+    "expiry_date": "",
+    "issuing_country": "",
+    "date_of_birth": ""
+  },
+  "reasoning": ""
+}
+
+Rules:
+- Do not use markdown
+- Do not wrap JSON in ``` blocks
+- Return raw JSON only
+- If no ID is detected:
+  - set is_id_card to false
+  - document_type to "Not an ID Card"
+  - extracted_details to {}
+''';
+
     for (final modelName in modelsToTry) {
       try {
+        print('Trying model: $modelName');
+
         final model = GenerativeModel(
           model: modelName,
-          apiKey: apiKey,
+          apiKey: apiKey.trim(),
           generationConfig: GenerationConfig(
+            temperature: 0,
             responseMimeType: 'application/json',
           ),
         );
-
-        final imageBytes = await imageFile.readAsBytes();
-        final mimeType = _getMimeType(imageFile.path);
-
-        const prompt = '''
-        Analyze the provided image and determine if it is an official identification document. 
-        Official identification documents include: National ID Cards, Passports, Driver's Licenses, State IDs, Resident Cards, or similar government-issued photo identification.
-        
-        Return a JSON object with the following fields:
-        - is_id_card: a boolean indicating if the image is an identification document.
-        - confidence: a double between 0.0 and 1.0 representing your confidence in this decision.
-        - document_type: a string specifying the type of document (e.g., "National ID", "Driver's License", "Passport", "Resident Card", "Not an ID Card", "Unknown").
-        - extracted_details: a JSON object containing key-value pairs of any details you can read from the document, such as:
-          - full_name
-          - id_number
-          - expiry_date
-          - issuing_country
-          - date_of_birth
-          - any other relevant fields visible (use lowercase snake_case for keys, and string values). If not an ID or no details can be read, leave this object empty.
-        - reasoning: a string explaining the reason for your classification (e.g., "Contains a clear face photograph, government markings, and typical ID card metadata fields" or "This is a photo of a dog and contains no identification card properties").
-
-        Do not include any formatting other than the raw JSON output.
-        ''';
 
         final response = await model.generateContent([
           Content.multi([
             TextPart(prompt),
             DataPart(mimeType, imageBytes),
-          ])
+          ]),
         ]);
 
         final responseText = response.text;
-        if (responseText == null) {
-          throw Exception('Received empty response from Gemini AI.');
+
+        print('Response from $modelName: $responseText');
+
+        if (responseText == null || responseText.trim().isEmpty) {
+          throw Exception('Empty response from Gemini.');
         }
 
-        final decoded = jsonDecode(responseText);
+        final cleanedResponse =
+            responseText.replaceAll('```json', '').replaceAll('```', '').trim();
+
+        final decoded = jsonDecode(cleanedResponse);
+
         return DetectionResult.fromJson(decoded);
       } catch (e) {
         lastError = e;
-        // Print warning to log and try next model
-        print('Model $modelName failed with error: $e. Trying fallback model...');
+
+        print(
+          'Model $modelName failed with error: $e',
+        );
+        // If the error is likely temporary (e.g., server overloaded or quota limit), wait a moment before trying the next model.
+        final errorMsg = e.toString().toLowerCase();
+        if (errorMsg.contains('unavailable') ||
+            errorMsg.contains('quota') ||
+            errorMsg.contains('rate limit')) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
     }
 
-    throw Exception('All Gemini models failed. Last error: $lastError');
+    throw Exception(
+      'All Gemini models failed. Last error: $lastError',
+    );
   }
 
   static String _getMimeType(String filePath) {
     final lowerPath = filePath.toLowerCase();
+
     if (lowerPath.endsWith('.png')) {
       return 'image/png';
-    } else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
+    }
+
+    if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
       return 'image/jpeg';
-    } else if (lowerPath.endsWith('.webp')) {
+    }
+
+    if (lowerPath.endsWith('.webp')) {
       return 'image/webp';
-    } else if (lowerPath.endsWith('.gif')) {
+    }
+
+    if (lowerPath.endsWith('.gif')) {
       return 'image/gif';
     }
-    return 'image/jpeg'; // default fallback
+
+    return 'image/jpeg';
   }
 
-  static Future<DetectionResult> detectIdCardLocally({required File imageFile}) async {
+  static String _convertArabicDigitsToEnglish(String input) {
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+    String output = input;
+    for (int i = 0; i < 10; i++) {
+      output = output.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return output;
+  }
+
+  static Future<DetectionResult> detectIdCardLocally(
+      {required File imageFile}) async {
     final inputImage = InputImage.fromFilePath(imageFile.path);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    
+
     try {
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      final text = recognizedText.text;
+      final RecognizedText recognizedText =
+          await textRecognizer.processImage(inputImage);
+
+      // Normalize Arabic numerals to standard English digits
+      final text = _convertArabicDigitsToEnglish(recognizedText.text);
       final lowerText = text.toLowerCase();
 
       bool isId = false;
@@ -104,25 +167,26 @@ class AiDetectorService {
       String reasoning = '';
 
       // Detection indicators
-      final hasIdKeyword = lowerText.contains('national') || 
-                           lowerText.contains('identity') || 
-                           lowerText.contains('card') || 
-                           lowerText.contains('government') ||
-                           lowerText.contains('republic') ||
-                           lowerText.contains('egypt') ||
-                           lowerText.contains('مصر') ||
-                           lowerText.contains('القومي') ||
-                           lowerText.contains('بطاقة');
-                           
-      final hasPassportKeyword = lowerText.contains('passport') || 
-                                 lowerText.contains('جواز') || 
-                                 lowerText.contains('سفر');
-                                 
-      final hasLicenseKeyword = lowerText.contains('license') || 
-                                lowerText.contains('driving') || 
-                                lowerText.contains('driver') ||
-                                lowerText.contains('رخصة') ||
-                                lowerText.contains('قيادة');
+      final hasIdKeyword = lowerText.contains('national') ||
+          lowerText.contains('identity') ||
+          lowerText.contains('card') ||
+          lowerText.contains('government') ||
+          lowerText.contains('republic') ||
+          lowerText.contains('egypt') ||
+          lowerText.contains('مصر') ||
+          lowerText.contains('القومي') ||
+          lowerText.contains('بطاقة') ||
+          lowerText.contains('شخصية');
+
+      final hasPassportKeyword = lowerText.contains('passport') ||
+          lowerText.contains('جواز') ||
+          lowerText.contains('سفر');
+
+      final hasLicenseKeyword = lowerText.contains('license') ||
+          lowerText.contains('driving') ||
+          lowerText.contains('driver') ||
+          lowerText.contains('رخصة') ||
+          lowerText.contains('قيادة');
 
       if (hasPassportKeyword) {
         isId = true;
@@ -139,27 +203,34 @@ class AiDetectorService {
       }
 
       if (isId) {
-        reasoning = 'Local ML Kit OCR scanned the image and successfully identified key text structures indicating a $docType. This verification was processed 100% locally on the device.';
-        
-        // Extract 14-digit Egyptian ID if exists
-        final egyptIdRegex = RegExp(r'\b\d{14}\b');
+        reasoning =
+            'Local ML Kit OCR scanned the image and successfully identified key text structures indicating a $docType. This verification was processed 100% locally on the device.';
+
+        // Extract 14-digit Egyptian ID if exists (could have spaces between digits)
+        final egyptIdRegex = RegExp(r'\d(?:\s*\d){13}');
         final matchId = egyptIdRegex.firstMatch(text);
         if (matchId != null) {
-          details['id_number'] = matchId.group(0)!;
+          final matchedStr = matchId.group(0)!;
+          // Remove spaces to get clean 14 digits
+          details['id_number'] = matchedStr.replaceAll(RegExp(r'\s+'), '');
         }
 
         // Extract potential date values (YYYY-MM-DD or DD/MM/YYYY)
-        final dateRegex = RegExp(r'\b\d{2}[-/.]\d{2}[-/.]\d{4}\b|\b\d{4}[-/.]\d{2}[-/.]\d{2}\b');
-        final dates = dateRegex.allMatches(text).map((m) => m.group(0)!).toList();
+        final dateRegex = RegExp(
+            r'\b\d{2}[-/.]\d{2}[-/.]\d{4}\b|\b\d{4}[-/.]\d{2}[-/.]\d{2}\b');
+        final dates =
+            dateRegex.allMatches(text).map((m) => m.group(0)!).toList();
         if (dates.isNotEmpty) {
           details['dates_found'] = dates.join(', ');
         }
-        
+
         // Include first 100 characters of scanned text
         final snippet = text.replaceAll('\n', ' ').trim();
-        details['scanned_text'] = snippet.length > 80 ? '${snippet.substring(0, 80)}...' : snippet;
+        details['scanned_text'] =
+            snippet.length > 80 ? '${snippet.substring(0, 80)}...' : snippet;
       } else {
-        reasoning = 'Local ML Kit OCR scanned the image but could not find any typical text indicators matching a National ID, Passport, or Driver\'s License. No government headers or standard ID patterns were detected.';
+        reasoning =
+            'Local ML Kit OCR scanned the image but could not find any typical text indicators matching a National ID, Passport, or Driver\'s License. No government headers or standard ID patterns were detected. Note: Local OCR only supports English/Latin-based text; for Arabic IDs, please use Gemini AI.';
       }
 
       return DetectionResult(
