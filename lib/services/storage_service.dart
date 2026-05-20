@@ -7,7 +7,7 @@ class StorageService {
 
   static Future<String?> getApiKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiKeyKey);
+    return prefs.getString(_apiKeyKey) ?? 'AIzaSyCdbecd3YypiLjsfhYezjKbiGf6SBjxRCU';
   }
 
   static Future<bool> saveApiKey(String key) async {
@@ -22,7 +22,7 @@ class StorageService {
 
   static Future<bool> isDemoModeEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_demoModeKey) ?? true; // Default to true so users can test immediately
+    return prefs.getBool(_demoModeKey) ?? false; // Default to false so Gemini AI is active immediately
   }
 
   static Future<bool> setDemoModeEnabled(bool enabled) async {

@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isScanning = false;
   DetectionResult? _result;
   String _apiKey = '';
-  bool _isDemoMode = true;
+  bool _isDemoMode = false;
   String? _errorMessage;
 
   late AnimationController _scannerController;
